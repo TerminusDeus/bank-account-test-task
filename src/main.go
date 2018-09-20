@@ -1,8 +1,8 @@
 package main
 
 import (
-	"net/http"
 	"fmt"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 
@@ -10,11 +10,11 @@ import (
 )
 
 type PutAccountReq struct {
-	InitialAmount int64 `json:"initialAmount" form:"initialAmount"`
+	InitialAmount int64 `json:"initialAmount"`
 }
 
 type PostAccountReq struct {
-	Amount int64 `json:"amount" form:"amount"`
+	Amount int64 `json:"amount"`
 }
 
 type GetAccountResp struct {
@@ -22,9 +22,10 @@ type GetAccountResp struct {
 }
 
 const (
-	AccIsNotCreatedErr = "Account is not created"
-	AccIsClosedErr     = "Account is closed"
-	NotEnoughMoney     = "Not enough money"
+	AccIsNotCreatedErr          = "Account is not created"
+	AccHasBeenAlreadyCreatedErr = "Account has been already created"
+	AccIsClosedErr              = "Account is closed"
+	NotEnoughMoney              = "Not enough money"
 )
 
 var (
@@ -45,20 +46,17 @@ func initializeRoutes() {
 	router.DELETE("account", DeleteAccount)
 }
 
-//  PostAccount lets change account balance value
+// PostAccount lets change account balance value
 func PostAccount(context *gin.Context) {
 	var postAccountReq PostAccountReq
-	var amount int64
 
 	if err := context.Bind(&postAccountReq); err != nil {
-		context.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintln("Context bind error: ", err.Error())})
+		context.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Context bind error: %s\n", err.Error())})
 		return
-	} else {
-		amount = postAccountReq.Amount
 	}
 
-	if amount == 0 {
-		context.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintln("Amount value cannot be zero")})
+	if postAccountReq.Amount == 0 {
+		context.JSON(http.StatusBadRequest, gin.H{"error": "Amount value cannot be zero"})
 		return
 	}
 
@@ -70,17 +68,17 @@ func PostAccount(context *gin.Context) {
 			context.JSON(http.StatusBadRequest, gin.H{"error": AccIsClosedErr})
 			return
 		} else {
-			if _, ok := account.Deposit(amount); !ok {
+			if _, ok := account.Deposit(postAccountReq.Amount); !ok {
 				context.JSON(http.StatusBadRequest, gin.H{"error": NotEnoughMoney})
 				return
 			}
 		}
 	}
 
-	context.JSON(http.StatusOK, "Account successfully created")
+	context.JSON(http.StatusOK, "Account balance successfully changed")
 }
 
-//  GetAccount lets getting account balance
+// GetAccount lets getting account balance
 func GetAccount(context *gin.Context) {
 	var amount int64
 	var ok bool
@@ -122,6 +120,13 @@ func PutAccount(context *gin.Context) {
 		account = acc.Open(initialAmount)
 		if account == nil {
 			context.JSON(http.StatusBadRequest, gin.H{"error": AccIsNotCreatedErr})
+			return
+		}
+	} else {
+		if !account.IsOpen {
+			account.IsOpen = true
+		} else {
+			context.JSON(http.StatusBadRequest, gin.H{"error": AccHasBeenAlreadyCreatedErr})
 			return
 		}
 	}
