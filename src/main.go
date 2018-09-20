@@ -1,24 +1,35 @@
 package main
 
 import (
-	"github.com/gin-gonic/gin"
-	"sync"
 	"net/http"
+	"fmt"
+
+	"github.com/gin-gonic/gin"
+
+	acc "bank-account-test-task/src/account"
 )
 
-const (
-	AccNotCreatedErr = "Account is not created"
-	AccisClosedErr   = "Account is closed"
-)
-
-type Account struct {
-	balance int64
-	mutex   sync.Mutex
-	isOpen  bool
+type PutAccountReq struct {
+	InitialAmount int64 `json:"initialAmount" form:"initialAmount"`
 }
 
+type PostAccountReq struct {
+	Amount int64 `json:"amount" form:"amount"`
+}
+
+type GetAccountResp struct {
+	Amount int64 `json:"amount"`
+}
+
+const (
+	AccIsNotCreatedErr = "Account is not created"
+	AccIsClosedErr     = "Account is closed"
+	NotEnoughMoney     = "Not enough money"
+)
+
 var (
-	router *gin.Engine
+	router  *gin.Engine
+	account *acc.Account
 )
 
 func main() {
@@ -34,60 +45,101 @@ func initializeRoutes() {
 	router.DELETE("account", DeleteAccount)
 }
 
+//  PostAccount lets change account balance value
 func PostAccount(context *gin.Context) {
-	context.JSON(http.StatusOK, "")
+	var postAccountReq PostAccountReq
+	var amount int64
+
+	if err := context.Bind(&postAccountReq); err != nil {
+		context.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintln("Context bind error: ", err.Error())})
+		return
+	} else {
+		amount = postAccountReq.Amount
+	}
+
+	if amount == 0 {
+		context.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintln("Amount value cannot be zero")})
+		return
+	}
+
+	if account == nil {
+		context.JSON(http.StatusBadRequest, gin.H{"error": AccIsNotCreatedErr})
+		return
+	} else {
+		if !account.IsOpen {
+			context.JSON(http.StatusBadRequest, gin.H{"error": AccIsClosedErr})
+			return
+		} else {
+			if _, ok := account.Deposit(amount); !ok {
+				context.JSON(http.StatusBadRequest, gin.H{"error": NotEnoughMoney})
+				return
+			}
+		}
+	}
+
+	context.JSON(http.StatusOK, "Account successfully created")
 }
 
+//  GetAccount lets getting account balance
 func GetAccount(context *gin.Context) {
-	context.JSON(http.StatusOK, "")
+	var amount int64
+	var ok bool
+	if account == nil {
+		context.JSON(http.StatusBadRequest, gin.H{"error": AccIsNotCreatedErr})
+		return
+	} else {
+		if !account.IsOpen {
+			context.JSON(http.StatusBadRequest, gin.H{"error": AccIsClosedErr})
+			return
+		} else {
+			if amount, ok = account.Balance(); !ok {
+				context.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintln("Account balance value cannot be defined")})
+				return
+			}
+		}
+	}
+	context.JSON(http.StatusOK, GetAccountResp{amount})
 }
 
+// PutAccount lets new account creation
 func PutAccount(context *gin.Context) {
-	context.JSON(http.StatusOK, "")
+	var putAccountReq PutAccountReq
+	var initialAmount int64
+
+	if err := context.Bind(&putAccountReq); err != nil {
+		context.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintln("Context bind error: ", err.Error())})
+		return
+	} else {
+		initialAmount = putAccountReq.InitialAmount
+	}
+
+	if initialAmount < 0 {
+		context.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintln("Initial deposit cannot be negative")})
+		return
+	}
+
+	if account == nil {
+		account = acc.Open(initialAmount)
+		if account == nil {
+			context.JSON(http.StatusBadRequest, gin.H{"error": AccIsNotCreatedErr})
+			return
+		}
+	}
+
+	context.JSON(http.StatusOK, "Account successfully created")
 }
 
+// DeleteAccount handles existing account closing logic
 func DeleteAccount(context *gin.Context) {
-	context.JSON(http.StatusOK, "")
-}
-
-// Open creates new pointer to Account object with a given initial deposit
-func Open(initialDeposit int64) *Account {
-	if initialDeposit < 0 {
-		return nil
+	if account == nil {
+		context.JSON(http.StatusBadRequest, gin.H{"error": AccIsNotCreatedErr})
+		return
 	}
-	return &Account{isOpen: true, balance: initialDeposit, mutex: sync.Mutex{}}
-}
 
-// Close closes bank account and returns current balance
-func (a *Account) Close() (payout int64, ok bool) {
-	a.mutex.Lock()
-	defer a.mutex.Unlock()
-
-	if !a.isOpen {
-		return 0, false
+	if _, ok := account.Close(); !ok {
+		context.JSON(http.StatusBadRequest, gin.H{"error": "Account cannot be deleted"})
+		return
 	}
-	curBalance := a.balance
-	a.isOpen = false
-	a.balance = 0
-	return curBalance, true
-}
 
-// Balance returns account balance
-func (a *Account) Balance() (balance int64, ok bool) {
-	a.mutex.Lock()
-	defer a.mutex.Unlock()
-	if !a.isOpen {
-		return 0, false
-	}
-	return a.balance, true
-}
-
-func (a *Account) Deposit(amount int64) (newBalance int64, ok bool) {
-	a.mutex.Lock()
-	defer a.mutex.Unlock()
-	if !a.isOpen || a.balance+amount < 0 {
-		return 0, false
-	}
-	a.balance += amount
-	return a.balance, true
+	context.JSON(http.StatusOK, "Account successfully deleted")
 }
