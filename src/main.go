@@ -1,9 +1,8 @@
-package src
+package main
 
 import (
 	"github.com/gin-gonic/gin"
 	"sync"
-	"bank-account-test-task/src/common"
 	"net/http"
 )
 
@@ -13,23 +12,19 @@ const (
 )
 
 type Account struct {
-	balance float64
+	balance int64
 	mutex   sync.Mutex
 	isOpen  bool
 }
 
 var (
-	Config common.Config
 	router *gin.Engine
 )
 
 func main() {
-	Config = common.InitConfig()
 	router = gin.Default()
 	initializeRoutes()
-
-	// port can be customized in conf.json
-	router.Run(":" + Config.Port)
+	router.Run()
 }
 
 func initializeRoutes() {
@@ -55,16 +50,16 @@ func DeleteAccount(context *gin.Context) {
 	context.JSON(http.StatusOK, "")
 }
 
-// Open creates new Account pointer object with a given initial amount
-func Open(initialAmount float64) *Account {
-	if initialAmount < 0 {
+// Open creates new pointer to Account object with a given initial deposit
+func Open(initialDeposit int64) *Account {
+	if initialDeposit < 0 {
 		return nil
 	}
-	return &Account{isOpen: true, balance: initialAmount, mutex: sync.Mutex{}}
+	return &Account{isOpen: true, balance: initialDeposit, mutex: sync.Mutex{}}
 }
 
 // Close closes bank account and returns current balance
-func (a *Account) Close() (out float64, ok bool) {
+func (a *Account) Close() (payout int64, ok bool) {
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
 
@@ -78,7 +73,7 @@ func (a *Account) Close() (out float64, ok bool) {
 }
 
 // Balance returns account balance
-func (a *Account) Balance() (balance float64, ok bool) {
+func (a *Account) Balance() (balance int64, ok bool) {
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
 	if !a.isOpen {
@@ -87,7 +82,7 @@ func (a *Account) Balance() (balance float64, ok bool) {
 	return a.balance, true
 }
 
-func (a *Account) Deposit(amount float64) (newBalance float64, ok bool) {
+func (a *Account) Deposit(amount int64) (newBalance int64, ok bool) {
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
 	if !a.isOpen || a.balance+amount < 0 {
