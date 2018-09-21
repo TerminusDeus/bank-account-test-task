@@ -12,11 +12,11 @@ import (
 var account *acc.Account
 
 type PutAccountReq struct {
-	InitialAmount int64 `json:"initialAmount,required"`
+	InitialAmount int64 `json:"initialAmount" binding:"required"`
 }
 
 type PostAccountReq struct {
-	Amount int64 `json:"amount,required"`
+	Amount int64 `json:"amount" binding:"required"`
 }
 
 type GetAccountResp struct {
